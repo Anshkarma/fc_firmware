@@ -1,0 +1,48 @@
+# ============================================================================
+# Core Firmware Repository Git Ignore Matrix
+# ============================================================================
+
+# Target Build Artifacts Binary Outputs
+build/
+bin/
+obj/
+out/
+*.exe
+*.out
+*.app
+*.elf
+*.bin
+*.hex
+*.map
+
+# Object Files and Intermediate Translation Unit Garbage
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# CMake Automation Context Traces
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Local Target Telemetry Output Logs (Do not push your local run traces!)
+logs/*.csv
+logs/*.png
+
+# Defensive IDE Matrix Configuration Blocks (In case your senior uses them)
+.vscode/
+.idea/
+.clion*/
+*.suo
+*.user
+*.userosscache
+*.sln
+*.vcxproj
