@@ -1,145 +1,111 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
 #include "plant.h"
-#include "imu_hal.h"
-#include "mag_hal.h"
-#include "baro_hal.h"
-#include "attitude.h"
-#include "control.h"
-#include "mixer.h"
 
-// State tracking variables defined in plant.c
-extern quad_state_t drone;
-extern float current_sim_time_s;
+/* Linkages to our simulated hardware mock drivers */
+extern uint32_t current_sim_time_us;
+extern uint16_t mock_motor_commands[4];
 
-// Mock driver instances bound via the HAL pointers
-extern imu_dev_t imu_mock;
-extern mag_dev_t mag_mock;
-extern baro_dev_t baro_mock;
+/* Flight Controller Application Loop Signature (to be built later) */
+extern void fc_init(void);
+extern void fc_step(void);
 
-// Base configuration constants
-#define SIM_STEP_DT       0.001f   // 1kHz loop rate execution steps
-#define RAD_TO_DEG        57.29578f
+/* Quaternion to Euler Utility for CSV Logging */
+static void quat_to_euler_deg(quat_t q, float *roll, float *pitch, float *yaw) {
+    float sinr_cosp = 2.0f * (q.w * q.x + q.y * q.z);
+    float cosr_cosp = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+    *roll = atan2f(sinr_cosp, cosr_cosp) * (180.0f / 3.14159265f);
 
-static void run_scenario(int scenario_id, const char* log_path) {
-    printf("Executing Scenario %d -> Logging to: %s\n", scenario_id, log_path);
-    
-    // Reset physics world parameters and PID state states
-    plant_init_scenario(scenario_id);
-    control_init();
-
-    FILE* csv = fopen(log_path, "w");
-    if (!csv) {
-        perror("Error: Failed to open telemetry log path");
-        return;
+    float sinp = 2.0f * (q.w * q.y - q.z * q.x);
+    if (fabsf(sinp) >= 1.0f) {
+        *pitch = copysignf(90.0f, sinp);
+    } else {
+        *pitch = asinf(sinp) * (180.0f / 3.14159265f);
     }
 
-    // Standard columns for validation tools
-    fprintf(csv, "time_s,pos_z,roll_est,pitch_est,yaw_est,motor1,motor4\n");
-
-    // Map hardware abstraction interface pointers to our host-side drivers
-    imu_dev_t* imu = &imu_mock;
-    mag_dev_t* mag = &mag_mock;
-    baro_dev_t* baro = &baro_mock;
-
-    // Initialize drivers
-    if (!imu->init() || !mag->init() || !baro->init()) {
-        fprintf(stderr, "Fatal: Driver initialization failed for scenario %d\n", scenario_id);
-        fclose(csv);
-        return;
-    }
-
-    // Sensor buffers
-    float gyro[3], accel[3], mag_data[3];
-    float baro_press, baro_alt;
-    uint32_t timestamp_us;
-
-    // Control and feedback metrics
-    float roll_est = 0.0f, pitch_est = 0.0f, yaw_est = 0.0f;
-    float roll_cmd = 0.0f, pitch_cmd = 0.0f, yaw_cmd = 0.0f;
-    float motor_outputs[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-
-    // Target flight profiles: Taget dead-level hover attitude
-    control_sticks_t sticks = {
-        .roll_angle = 0.0f,
-        .pitch_angle = 0.0f,
-        .yaw_rate = 0.0f
-    };
-    
-    // Constant base throttle setting to counteract weight in vertical Z-axis
-    float base_throttle = 0.615f; 
-
-    // Scenario 1 requires 30 seconds check. Scenarios 2 and 3 need 10 seconds tracking.
-    int total_iterations = (scenario_id == 1) ? 30000 : 10000;
-
-    for (int step = 0; step < total_iterations; step++) {
-        
-        float wind_disturbance_torque[3] = {0.0f, 0.0f, 0.0f};
-        
-        // Scenario 3: Inject a sustained 0.45 Nm roll perturbation between 2s and 4s
-        if (scenario_id == 3 && current_sim_time_s >= 2.0f && current_sim_time_s <= 4.0f) {
-            wind_disturbance_torque[0] = 0.45f; 
-        }
-
-        // 1. Advance rigid-body plant physics dynamics
-        plant_rk4_step(&drone, motor_outputs, wind_disturbance_torque, SIM_STEP_DT);
-
-        // 2. Sample abstract sensor registers through the HAL Layer
-        imu->read(gyro, accel, &timestamp_us);
-        mag->read(mag_data, &timestamp_us);
-        baro->read(&baro_press, &baro_alt, &timestamp_us);
-
-        // 3. Update Mahony orientation estimation state machine
-        mahony_update(gyro, accel, mag_data, SIM_STEP_DT);
-        mahony_get_euler(&roll_est, &pitch_est, &yaw_est);
-
-        // Convert raw gyro rates to deg/s to meet PID expectations
-        float gyro_deg_s[3] = {
-            gyro[0] * RAD_TO_DEG, 
-            gyro[1] * RAD_TO_DEG, 
-            gyro[2] * RAD_TO_DEG
-        };
-
-        // 4. Update cascaded loop PID calculations
-        control_level_step(&sticks, (float[]){roll_est, pitch_est, yaw_est}, gyro_deg_s, SIM_STEP_DT,
-                           &roll_cmd, &pitch_cmd, &yaw_cmd);
-
-        // 5. Run geometric actuator allocation matrix mixing
-        mixer_execute(roll_cmd, pitch_cmd, yaw_cmd, base_throttle, motor_outputs);
-
-        // Telemetry downsampling: Log data fields at 100Hz (Every 10th loop step)
-        if (step % 10 == 0) {
-            fprintf(csv, "%.3f,%.4f,%.2f,%.2f,%.2f,%.3f,%.3f\n",
-                    current_sim_time_s, 
-                    drone.position.z, 
-                    roll_est * RAD_TO_DEG, 
-                    pitch_est * RAD_TO_DEG, 
-                    yaw_est * RAD_TO_DEG,
-                    motor_outputs[0], 
-                    motor_outputs[3]);
-        }
-
-        current_sim_time_s += SIM_STEP_DT;
-    }
-
-    fclose(csv);
-    printf("Scenario %d sequence completed successfully.\n\n", scenario_id);
+    float siny_cosp = 2.0f * (q.w * q.z + q.x * q.y);
+    float cosy_cosp = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    *yaw = atan2f(siny_cosp, cosy_cosp) * (180.0f / 3.14159265f);
 }
 
-int main(void) {
-    printf("==================================================\n");
-    printf("FLIGHT FIRMWARE VERIFICATION CORE RUNNER\n");
-    printf("==================================================\n");
-
-    // Execute complete evaluation profiles sequentially
-    run_scenario(1, "../logs/scenario1_hover.csv");
-    run_scenario(2, "../logs/scenario2_recovery.csv");
-    run_scenario(3, "../logs/scenario3_disturbance.csv"); 
-
-    printf("==================================================\n");
-    printf("ALL SYSTEM TESTS GENERATED SUCCESSFUL VERIFICATIONS\n");
-    printf("==================================================\n");
+int main(int argc, char* argv[]) {
+    /* 1. Default Configuration Matrices */
+    uint32_t target_seed = 42;
+    char scenario_name[64] = "hover";
+    float duration_s = 30.0f; // Default 30s run for hover
     
-    return EXIT_SUCCESS;
+    /* 2. Command Line Argument Parsing Engine */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--seed") == 0 && (i + 1) < argc) {
+            target_seed = (uint32_t)atoi(argv[i + 1]);
+            i++;
+        } else if (strcmp(argv[i], "--scenario") == 0 && (i + 1) < argc) {
+            strncpy(scenario_name, argv[i + 1], sizeof(scenario_name) - 1);
+            i++;
+        }
+    }
+
+    printf("[SIM] Booting Test Bench...\n");
+    printf("[SIM] Target Scenario: %s | LCG Seed: %u\n", scenario_name, target_seed);
+
+    /* 3. Scenario Setup Matrix */
+    quad_state_t initial_state;
+    memset(&initial_state, 0, sizeof(quad_state_t));
+    initial_state.orientation.w = 1.0f; // Default level quaternion
+
+    if (strcmp(scenario_name, "tilt") == 0) {
+        /* Scenario 2: 30 degree initial roll (approx 0.523 rad) */
+        float half_angle = 30.0f * (3.14159265f / 180.0f) * 0.5f;
+        initial_state.orientation.w = cosf(half_angle);
+        initial_state.orientation.x = sinf(half_angle);
+        duration_s = 5.0f;
+    } else if (strcmp(scenario_name, "disturbance") == 0) {
+        /* Scenario 3: Disturbance injection at t = 2.0s */
+        disturbance_t dist = { .torque_Nm = {0.1f, 0.0f, 0.0f}, .start_us = 2000000, .duration_us = 50000 };
+        plant_inject_disturbance(&dist);
+        duration_s = 8.0f;
+    }
+
+    /* 4. Initialization Pipeline */
+    plant_init(target_seed, &initial_state);
+    current_sim_time_us = 0;
+    
+    /* TODO: fc_init(); will be called here once we build the controller */
+
+    /* 5. Telemetry Logging Setup */
+    FILE *csv_file = fopen("sim_output.csv", "w");
+    if (!csv_file) {
+        printf("[ERROR] Failed to instantiate CSV logging output.\n");
+        return -1;
+    }
+    fprintf(csv_file, "time_s,roll_deg,pitch_deg,yaw_deg\n");
+
+    /* 6. Main Synchronous Integration Loop */
+    uint32_t total_steps = (uint32_t)(duration_s * 1000.0f);
+    
+    for (uint32_t step = 0; step < total_steps; step++) {
+        /* A. Run Flight Controller Application Logic */
+        /* TODO: fc_step(); will execute here */
+        
+        /* B. Push the Physics Plant Forward via Mock Actuators */
+        plant_step(mock_motor_commands, current_sim_time_us);
+        
+        /* C. Extract True Telemetry for Validation */
+        const quad_state_t *truth = plant_get_state();
+        float roll, pitch, yaw;
+        quat_to_euler_deg(truth->orientation, &roll, &pitch, &yaw);
+        
+        /* D. Write Sub-Tick to CSV */
+        fprintf(csv_file, "%.3f,%.2f,%.2f,%.2f\n", (current_sim_time_us / 1000000.0f), roll, pitch, yaw);
+        
+        /* E. Advance Simulated Epoch Clock by 1ms */
+        current_sim_time_us += 1000;
+    }
+
+    fclose(csv_file);
+    printf("[SIM] Execution Terminated. Telemetry flushed to 'sim_output.csv'.\n");
+    return 0;
 }
