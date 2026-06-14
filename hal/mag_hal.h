@@ -6,8 +6,8 @@
 
 typedef struct{
 bool (*init)(void);
-bool (*read)(float  mag_ut[3] uint32  * ts_us);
-bool (*healthy)(void;
+bool (*read)(float  mag_ut[3], uint32_t  * ts_us);
+bool (*healthy)(void);
 }mag_dev_t;
 
 extern mag_dev_t mag_mock;

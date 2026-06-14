@@ -6,7 +6,7 @@
 
 typedef struct{
 bool (*init)(void);
-bool (*read)(float  gyro_rad_s[3], float  accel_m_s2[3], uint32  * ts_us);
+bool (*read)(float  gyro_rad_s[3], float  accel_m_s2[3], uint32_t * ts_us);
 bool (*healthy)(void);
 }imu_dev_t;
 
