@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
+#include "../src/math_types.h"
 /* Physical Parameters Configuration Core (Section 6.1) */
 #define PLANT_MASS_KG         0.250f       /* ~250g Class Drone Weight */
 #define PLANT_IXX             2.3e-3f      /* Moment of Inertia roll axis, kg*m^2 */
@@ -36,8 +36,7 @@
 #define PLANT_DT_S            (PLANT_DT_US * 1.0e-6f)
 
 /* Vector & Hamilton Scalar-First Quaternion Representations */
-typedef struct { float x; float y; float z; } vec3_t;
-typedef struct { float w; float x; float y; float z; } quat_t;
+
 
 /**
  * @brief Full physical environment tracking matrix (17 float state)
