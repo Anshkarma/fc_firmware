@@ -24,6 +24,11 @@ out/
 *.dll
 *.dylib
 
+# Local Target Telemetry Output
+logs/
+# Tuning logs that are not official project documentation
+TUNING_LOG.md
+
 # CMake Automation Context Traces
 CMakeCache.txt
 CMakeFiles/

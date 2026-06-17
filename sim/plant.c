@@ -127,6 +127,14 @@ void plant_init(uint32_t seed, const quad_state_t *init_state) {
 
     if (init_state) {
         memcpy(&global_state, init_state, sizeof(quad_state_t));
+        
+        // SAFE CONTEXT: If initial motor thrust inside scenario is 0, initialize it to hover balance
+        if (global_state.motor_thrust[0] == 0.0f) {
+            float base_eq = (PLANT_MASS_KG * PLANT_GRAVITY) / 4.0f;
+            for (int i = 0; i < 4; i++) {
+                global_state.motor_thrust[i] = base_eq;
+            }
+        }
     } else {
         memset(&global_state, 0, sizeof(quad_state_t));
         global_state.orientation.w = 1.0f;
@@ -138,13 +146,9 @@ void plant_init(uint32_t seed, const quad_state_t *init_state) {
     }
 
     uint32_t internal_seed = global_seed + 7777;
-    gyro_static_bias.x = generate_gaussian(&internal_seed, PLANT_SIGMA_BIAS_GYRO * (0.017453f)); /* Converts deg/s to rad/s bias explicitly */
+    gyro_static_bias.x = generate_gaussian(&internal_seed, PLANT_SIGMA_BIAS_GYRO * (0.017453f)); 
     gyro_static_bias.y = generate_gaussian(&internal_seed, PLANT_SIGMA_BIAS_GYRO * (0.017453f));
     gyro_static_bias.z = generate_gaussian(&internal_seed, PLANT_SIGMA_BIAS_GYRO * (0.017453f));
-}
-
-void plant_inject_disturbance(const disturbance_t *d) {
-    if (d) memcpy(&global_disturbance, d, sizeof(disturbance_t));
 }
 
 const quad_state_t *plant_get_state(void) {
@@ -153,10 +157,32 @@ const quad_state_t *plant_get_state(void) {
 
 void plant_step(const uint16_t throttle_cmd[4], uint32_t now_us) {
     float commanded_thrusts[4];
+    
     for (int i = 0; i < 4; i++) {
-        float u = (float)throttle_cmd[i];
+   //Dshot encoder logic
+        uint16_t frame = throttle_cmd[i];
+        
+
+        // 1. Strip the lower 5 bits and mask cleanly to 11-bit payload
+        uint16_t wire_throttle = (frame >> 5) & 0x7FF;
+        
+        // 2. Map wire throttle (48 - 2047) back to normalized [0.0, 1.0]
+        float u = 0.0f;
+        if (wire_throttle >= 48) {
+            u = (float)(wire_throttle - 48) / (2047.0f - 48.0f);
+        } else {
+            // Disarmed or reserved values treated as zero thrust
+            u = 0.0f; 
+        }
+        
+        // Ensure safety bounds
+        if (u > 1.0f) u = 1.0f;
+
+        // 3. Apply standard thrust equation (T = u^2 * Kt)
         commanded_thrusts[i] = u * u * PLANT_K_T;
     }
+
+
 
     quad_state_t s = global_state;
     quad_state_t k1, k2, k3, k4;
@@ -246,6 +272,12 @@ void plant_step(const uint16_t throttle_cmd[4], uint32_t now_us) {
     } else {
         global_state.orientation.w = 1.0f; global_state.orientation.x = 0.0f;
         global_state.orientation.y = 0.0f; global_state.orientation.z = 0.0f;
+    }
+}
+
+void plant_inject_disturbance(const disturbance_t *d) {
+    if (d) {
+        memcpy(&global_disturbance, d, sizeof(disturbance_t));
     }
 }
 

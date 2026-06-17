@@ -1,9 +1,10 @@
+
 #ifndef PLANT_H
 #define PLANT_H
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../src/math_types.h"
+#include "../src/types.h"
 /* Physical Parameters Configuration Core (Section 6.1) */
 #define PLANT_MASS_KG         0.250f       /* ~250g Class Drone Weight */
 #define PLANT_IXX             2.3e-3f      /* Moment of Inertia roll axis, kg*m^2 */
@@ -12,7 +13,14 @@
 #define PLANT_ARM_LEN         0.1f         /* Center to motor distance, meters */
 #define PLANT_GRAVITY         9.81f        /* Constant acceleration, m/s^2 */
 #define PLANT_TAU_MOTOR       0.030f       /* Motor first-order lag time, seconds */
-#define PLANT_K_T             1.0e-5f      /* Thrust coefficient factor */
+
+
+// K_T derived from hover equilibrium:
+// At hover: 4 × K_T × u_hover² = mass × g
+// Choosing u_hover = 0.5 (50% throttle, standard for 250g class)
+// K_T = (0.250 × 9.81) / (4 × 0.25) = 2.4525 N
+
+#define PLANT_K_T             2.4525f       
 #define PLANT_K_Q_OVER_KT     0.02f        /* Dimensionless yaw/thrust scaling ratio */
 
 /* Stochastic Noise Standard Deviations Matrix (Section 6.2) */

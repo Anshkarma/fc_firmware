@@ -1,72 +1,68 @@
 /**
  * @file dshot.c
- * @brief DShot encoder implementation (MSB First, 11-bit throttle + 1-bit Telemetry + 4-bit CRC).
+ * @brief DShot protocol encoder for translating normalized motor commands 
+ * into 16-bit digital ESC frames.
  */
 
 #include "dshot.h"
 #include <math.h>
 
-// Global protocol state (affects driver timing, not the bit encoding)
-static dshot_protocol_t current_protocol = DSHOT_PROTOCOL_600;
-
-void dshot_set_protocol(dshot_protocol_t protocol) {
-    current_protocol = protocol;
-}
-
-dshot_protocol_t dshot_get_protocol(void) {
-    return current_protocol;
-}
+// ==============================================================================
+// INTERNAL CORE ALGORITHMS
+// ==============================================================================
 
 /**
- * @brief Low-level function: Takes wire-format throttle and produces a 16-bit frame with CRC.
- * @param throttle_2047 11-bit wire format throttle (0-2047).
- * @param telemetry True to request telemetry from the ESC.
- * @return 16-bit encoded DShot frame.
+ * @brief Generates the 16-bit DShot frame including the 4-bit CRC.
+ * Strictly adheres to standard DShot XOR folding (Section 8.2).
  */
 uint16_t dshot_encode_frame(uint16_t throttle_2047, bool telemetry) {
-    // Pack 11-bit throttle and 1-bit telemetry into 12 bits
+    // 1. Pack 11-bit throttle and 1-bit telemetry into 12 bits
     uint16_t data = (throttle_2047 << 1) | (telemetry ? 1 : 0);
     
-    // Calculate 4-bit CRC over the 12 bits using XOR folding (Section 8.2)
-    uint8_t crc = (data ^ (data >> 4) ^ (data >> 8)) & 0x0F;
+    // 2. Calculate 4-bit CRC over the 12 bits using standard XOR folding
+    uint16_t crc = (data ^ (data >> 4) ^ (data >> 8)) & 0x0F;
     
-    // Append CRC to the lower 4 bits
+    // 3. Assemble and return the 16-bit payload
     return (data << 4) | crc;
 }
 
+// ==============================================================================
+// PUBLIC APIs
+// ==============================================================================
+
 /**
- * @brief High-level function: Normalizes 0.0-1.0 float to wire format and encodes.
- * @param throttle_norm Normalized throttle command [0.0, 1.0].
- * @param telemetry True to request telemetry.
- * @param armed System arming state (disarmed sends strict 0).
- * @return 16-bit encoded DShot frame.
+ * @brief Encodes a single normalized float throttle into a DShot frame.
  */
 uint16_t dshot_encode(float throttle_norm, bool telemetry, bool armed) {
-    // Safety check: Disarmed overrides everything to zero
+    // Safety check: Disarmed explicitly forces the kill signal (0)
     if (!armed) {
-        return dshot_encode_frame(0, 0); 
+        return dshot_encode_frame(0, false); 
     }
 
-    // Clamp normalized throttle strictly between 0.0 and 1.0
+    // Clamp normalized throttle strictly to prevent scaling overflow
     float t = throttle_norm;
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
 
-    // Linear map to DShot armed range: 48 to 2047
+    // Linear mapping to the strict DShot armed range (48 to 2047)
     uint16_t throttle_2047 = 48 + (uint16_t)roundf(t * (2047.0f - 48.0f));
 
     return dshot_encode_frame(throttle_2047, telemetry);
 }
 
 /**
- * @brief Public API: Processes all 4 motor commands simultaneously.
- * @param throttle_norm Array of 4 normalized throttle values.
- * @param telemetry Telemetry flag (applies to all motors).
- * @param armed System arming state.
- * @param frames Array populated with 4 encoded 16-bit frames.
+ * @brief Encodes the full quadcopter motor array into 16-bit frames.
  */
-void dshot_encode_motors(const float throttle_norm[4], bool telemetry, bool armed, uint16_t frames[4]) {
+void dshot_encode_motors(const float motor_norm[4], bool telemetry, bool is_armed, uint16_t output_frames[4]) {
     for (int i = 0; i < 4; i++) {
-        frames[i] = dshot_encode(throttle_norm[i], telemetry, armed);
+        // Dispatch mapping sequence to the atomic encoder
+        output_frames[i] = dshot_encode(motor_norm[i], telemetry, is_armed);
     }
+}
+
+
+void dshot_set_protocol(dshot_protocol_t protocol) {
+    // Hardware configuration logic goes here for real flight controller
+    // (void)protocol; prevents compiler warning for unused variable in simulation
+    (void)protocol; 
 }

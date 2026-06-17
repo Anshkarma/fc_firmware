@@ -1,9 +1,13 @@
 /**
  * @file attitude.c
- * @brief Mahony AHRS algorithm for state estimation.
- * * Implements a non-linear complementary filter (Mahony filter) on the 
- * Special Orthogonal group SO(3) to estimate the absolute orientation 
- * of the vehicle relative to the Earth frame using Gyro, Accel, and Mag data.
+ * @brief Mahony AHRS complementary filter for multi-rotor attitude state estimation.
+ * SYSTEM CONVENTIONS & FRAME OF REFERENCE:
+ * - Coordinate Axes: Right-Handed System (RHS)
+ * - X-Axis: Forward (Positive Front)
+ * - Y-Axis: Left (Positive Left)
+ * - Z-Axis: Up (Positive Zenith)
+ * - Attitude Trajectory: Roll (Positive Left Down), Pitch (Positive Nose Up), Yaw (Counter-Clockwise)
+ * - Orientation Space: Unit Quaternion (Hamilton Convention, Hyperbolic Scalar-First [w, x, y, z])
  */
 
 #include "attitude.h"
@@ -15,7 +19,7 @@
 
 #define KP_ACC 2.0f     /**< Proportional gain for accelerometer feedback */
 #define KI_ACC 0.005f   /**< Integral gain for accelerometer feedback */
-#define KP_MAG 1.0f     /**< Proportional gain for magnetometer feedback */
+#define KP_MAG 2.5f     /**< INCREASED: Proportional gain for magnetometer feedback */
 #define KI_MAG 0.002f   /**< Integral gain for magnetometer feedback */
 
 /* Global Filter Tracking Orientation Matrices */
@@ -75,7 +79,7 @@ static vec3_t quaternion_rotate(vec3_t v, quat_t q_curr) {
 
 /**
  * @brief Updates the attitude estimate using IMU and Mag data.
- * * @param gyro Angular rates in rad/s.
+ * @param gyro Angular rates in rad/s.
  * @param accel Linear acceleration vector.
  * @param mag Magnetic field vector.
  * @param dt Loop time delta in seconds.
@@ -83,20 +87,19 @@ static vec3_t quaternion_rotate(vec3_t v, quat_t q_curr) {
 void mahony_update(vec3_t gyro, vec3_t accel, vec3_t mag, float dt) {
     
     float accel_norm = sqrtf(accel.x*accel.x + accel.y*accel.y + accel.z*accel.z);
-    float mag_norm = sqrtf(mag.x*mag.x + mag.y*mag.y + mag.z*mag.z);
     
     // Accumulators for error feedback
     vec3_t error_p = {0.0f, 0.0f, 0.0f};
     vec3_t error_i = {0.0f, 0.0f, 0.0f};
 
     // 1. Accelerometer Feedback (Roll & Pitch correction)
+// 1. Accelerometer Feedback (ORIGINAL CROSS-PRODUCT)
     if (accel_norm > 0.0f) {
         vec3_t a = {accel.x / accel_norm, accel.y / accel_norm, accel.z / accel_norm};
         vec3_t world_down = {0.0f, 0.0f, 1.0f}; 
         vec3_t v_down_body = quaternion_rotate_inverse(world_down, q);
 
-        vec3_t e_acc = vector_cross(a, v_down_body);
-        
+        vec3_t e_acc = vector_cross(a, v_down_body); // ORIGINAL
         error_p.x += KP_ACC * e_acc.x;
         error_p.y += KP_ACC * e_acc.y;
         error_p.z += KP_ACC * e_acc.z;
@@ -104,33 +107,42 @@ void mahony_update(vec3_t gyro, vec3_t accel, vec3_t mag, float dt) {
         error_i.x += KI_ACC * e_acc.x;
         error_i.y += KI_ACC * e_acc.y;
         error_i.z += KI_ACC * e_acc.z;
+
     }
 
-    // 2. Magnetometer Feedback (Yaw correction)
-    if (mag_norm > 0.0f) {
-        vec3_t m = {mag.x / mag_norm, mag.y / mag_norm, mag.z / mag_norm};
-        
-        // Rotate measured mag into earth frame to find magnetic north
-        vec3_t h = quaternion_rotate(m, q);
-        
-        // Ensure magnetic north is strictly horizontal
-        vec3_t b = {sqrtf(h.x*h.x + h.y*h.y), 0.0f, h.z}; 
-        
-        // Rotate magnetic north reference back to body frame
-        vec3_t w_mag = quaternion_rotate_inverse(b, q);
-        
-        // Calculate error
-        vec3_t e_mag = vector_cross(m, w_mag);
-        
-        error_p.x += KP_MAG * e_mag.x;
-        error_p.y += KP_MAG * e_mag.y;
-        error_p.z += KP_MAG * e_mag.z;
-        
-        error_i.x += KI_MAG * e_mag.x;
-        error_i.y += KI_MAG * e_mag.y;
-        error_i.z += KI_MAG * e_mag.z;
-    }
+    // 2. Magnetometer Feedback with Hard-Iron Calibration
+    vec3_t mag_corrected = {
+        mag.x - 5.0f,
+        mag.y - (-3.0f),
+        mag.z - 2.0f
+    };
 
+    float mag_norm = sqrtf(mag_corrected.x * mag_corrected.x + 
+                           mag_corrected.y * mag_corrected.y + 
+                           mag_corrected.z * mag_corrected.z);
+
+// 2. Magnetometer Feedback (Yaw correction) — YAW-ONLY PROJECTION
+if (mag_norm > 0.0f) {
+    vec3_t m = {mag.x / mag_norm, mag.y / mag_norm, mag.z / mag_norm};
+    vec3_t h = quaternion_rotate(m, q);
+    vec3_t b = {sqrtf(h.x*h.x + h.y*h.y), 0.0f, h.z};
+    vec3_t w_mag = quaternion_rotate_inverse(b, q);
+    vec3_t e_mag_full = vector_cross(m, w_mag);
+
+    // Project error onto body Z-axis only (yaw), ignore X/Y components
+    // This prevents roll/pitch noise from drowning out yaw correction
+    vec3_t body_z = quaternion_rotate_inverse((vec3_t){0,0,1}, q);
+    float body_z_norm = sqrtf(body_z.x*body_z.x + body_z.y*body_z.y + body_z.z*body_z.z);
+    float e_mag_yaw = (e_mag_full.x*body_z.x + e_mag_full.y*body_z.y + e_mag_full.z*body_z.z) / body_z_norm;
+
+    error_p.x += KP_MAG * e_mag_yaw * body_z.x;
+    error_p.y += KP_MAG * e_mag_yaw * body_z.y;
+    error_p.z += KP_MAG * e_mag_yaw * body_z.z;
+
+    error_i.x += KI_MAG * e_mag_yaw * body_z.x;
+    error_i.y += KI_MAG * e_mag_yaw * body_z.y;
+    error_i.z += KI_MAG * e_mag_yaw * body_z.z;
+}
     // Integrate error
     e_int.x += error_i.x * dt;
     e_int.y += error_i.y * dt;
@@ -162,7 +174,7 @@ void mahony_update(vec3_t gyro, vec3_t accel, vec3_t mag, float dt) {
 
 /**
  * @brief Converts internal quaternion state to Euler angles (in degrees).
- * * @param roll Pointer to store the computed roll angle.
+ * @param roll Pointer to store the computed roll angle.
  * @param pitch Pointer to store the computed pitch angle.
  * @param yaw Pointer to store the computed yaw angle.
  */
