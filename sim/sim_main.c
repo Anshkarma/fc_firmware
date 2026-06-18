@@ -1,7 +1,8 @@
 /**
  * @file sim_main.c
  * @brief Host-only simulation entry point and telemetry logger.
- * Connects the mathematical Plant engine with the isolated Flight Controller firmware.
+ * Connects the mathematical Plant engine with the isolated Flight Controller firmware
+ * via Hardware Abstraction Layer (HAL) mocks.
  */
 
 #include <stdio.h>
@@ -12,32 +13,39 @@
 #include <stdbool.h>
 
 #include "plant.h"
-#include "scenarios.h" // The rigid test scenarios engine
+#include "scenarios.h" 
 #include "../src/types.h"
 #include "../src/modes.h"
 #include "../src/control.h"
 #include "../src/attitude.h"
 
-// ==============================================================================
-// FIRMWARE EXTERN LINKAGES
-// ==============================================================================
+/* ==============================================================================
+ * HAL MOCK HEADERS & EXTERN LINKAGES
+ * ============================================================================== */
+#include "motor_hal.h"
+#include "time_hal.h"
+
 extern void fc_init(void);
 extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float dt);
 
-// ==============================================================================
-// HARDWARE ABSTRACTION LAYER (HAL) MOCK IMPLEMENTATION
-// ==============================================================================
-static uint16_t captured_dshot_frames[4] = {0};
+/* Import global states from mock drivers */
+extern uint32_t current_sim_time_us;     // Defined in time_mock.c
+extern uint16_t mock_motor_commands[4];  // Defined in motor_mock.c
 
+/* ==============================================================================
+ * HAL BRIDGE IMPLEMENTATION
+ * ============================================================================== */
+/**
+ * @brief Bridge function to connect firmware's HAL call to our simulated motor driver.
+ */
 void motor_hal_write(uint16_t frames[4]) {
-    for (int i = 0; i < 4; i++) {
-        captured_dshot_frames[i] = frames[i];
-    }
+    // Strictly forward the encoded frames to the motor HAL mock
+    motor_mock.send_dshot(frames);
 }
 
-// ==============================================================================
-// UTILITY FUNCTIONS
-// ==============================================================================
+/* ==============================================================================
+ * UTILITY FUNCTIONS
+ * ============================================================================== */
 static void quat_to_euler_deg(quat_t q, float *roll, float *pitch, float *yaw) {
     float sinr_cosp = 2.0f * (q.w * q.x + q.y * q.z);
     float cosr_cosp = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
@@ -55,12 +63,12 @@ static void quat_to_euler_deg(quat_t q, float *roll, float *pitch, float *yaw) {
     *yaw = atan2f(siny_cosp, cosy_cosp) * (180.0f / 3.14159265f);
 }
 
-// ==============================================================================
-// MAIN EXECUTABLE ENGINE
-// ==============================================================================
+/* ==============================================================================
+ * MAIN EXECUTABLE ENGINE
+ * ============================================================================== */
 int main(int argc, char* argv[]) {
     uint32_t target_seed = 42;
-    char scenario_name[64] = "hover"; // Default fallback
+    char scenario_name[64] = "hover"; 
     
     // 1. Argument Parsing Matrix
     for (int i = 1; i < argc; i++) {
@@ -79,25 +87,24 @@ int main(int argc, char* argv[]) {
     scenario_config_t config;
     if (!scenario_parse_and_setup(scenario_name, &config)) {
         printf("[FATAL] Unknown scenario: '%s'. Valid options: hover, tilt_recovery, disturbance.\n", scenario_name);
-        return -1; // Catastrophic abort
+        return -1; 
     }
 
-    // 3. Bootstrapping Systems (Plant & Firmware)
+    // 3. Bootstrapping Systems (Plant, HAL Mocks & Firmware)
     plant_init(target_seed, &config.initial_state);
     if (config.type == SCENARIO_DISTURBANCE) {
         plant_inject_disturbance(&config.disturbance);
     }
     
-    uint32_t current_sim_time_us = 0;
+    current_sim_time_us = 0; // Reset global mock clock
     
-    fc_init();
+    motor_mock.init();       // Initialize motor hardware state
+    fc_init();               // Initialize firmware logic
     
-
     // 4. Logging File System Architecture
-    system("if not exist logs mkdir logs"); // Windows native constraint
+    system("if not exist logs mkdir logs"); 
 
     char csv_path[128];
-    // Dynamic output targeting relative log engine
     snprintf(csv_path, sizeof(csv_path), "logs/%s.csv", scenario_name);
     
     FILE *csv_file = fopen(csv_path, "w");
@@ -106,7 +113,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Strict 28-column requirement vector per §10.1
+    // Strict 28-column requirement vector
     fprintf(csv_file, "time_s,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,roll_true,pitch_true,yaw_true,roll_est,pitch_est,yaw_est,rate_roll,rate_pitch,rate_yaw,setpoint_roll,setpoint_pitch,setpoint_yaw,motor1,motor2,motor3,motor4,dshot1,dshot2,dshot3,dshot4,disturbance_torque\n");
 
     // 5. The 1000Hz Deterministic Execution Loop
@@ -114,7 +121,10 @@ int main(int argc, char* argv[]) {
     
     for (uint32_t step = 0; step < total_steps; step++) {
 
-       if(step==250) modes_arm();
+        if (step == 250) {
+            modes_arm();        // Unlock firmware controller
+            motor_mock.arm();   // Unlock hardware driver power distribution
+        }
         
         // A. Sensor Mocking (Hardware Emulation)
         float g_arr[3], a_arr[3], m_arr[3];
@@ -126,23 +136,16 @@ int main(int argc, char* argv[]) {
         vec3_t v_accel = {a_arr[0], a_arr[1], a_arr[2]};
         vec3_t v_mag   = {m_arr[0], m_arr[1], m_arr[2]};
         
-        // B. RC Stick Commands (LEVEL Mode semantics: 0 = level)
+        // B. RC Stick Commands
         vec3_t stick_cmds = {0.0f, 0.0f, 0.0f}; 
-        float throttle_cmd = 0.55f;  // exact hover equilibrium
+        float throttle_cmd = 0.55f;  
         float dt = 0.001f;
 
-        // C. Firmware Brain Execution (Generates DShot frames internally)
+        // C. Firmware Brain Execution (Generates DShot frames & triggers motor_hal_write)
         fc_step(v_gyro, v_accel, v_mag, stick_cmds, throttle_cmd, dt);
 
-        // ==============================================================================
-        // THE ESC SAFETY UNLOCK INJECTION
-        // ==============================================================================
-        // Real hardware ESCs permanently lock out if the first armed frame is > 0% throttle.
-        // We override the wire with standard '48' (0x0606 - Zero Throttle) for 500ms 
-        // after arming to successfully initialize the plant's motors.
-
-        // D. Hardware Physics Execution
-        plant_step(captured_dshot_frames, current_sim_time_us);
+        // D. Hardware Physics Execution (Consumes output from motor mock)
+        plant_step(mock_motor_commands, current_sim_time_us);
         
         // E. Telemetry Downsampling (100Hz Logging Factor)
         if (step % 10 == 0) {
@@ -164,10 +167,10 @@ int main(int argc, char* argv[]) {
 
             // Extract normalized motor positions backwards out of encoded wire frames for logging
             float m1_n = 0.0f, m2_n = 0.0f, m3_n = 0.0f, m4_n = 0.0f;
-            uint16_t w_t1 = captured_dshot_frames[0] >> 5;
-            uint16_t w_t2 = captured_dshot_frames[1] >> 5;
-            uint16_t w_t3 = captured_dshot_frames[2] >> 5;
-            uint16_t w_t4 = captured_dshot_frames[3] >> 5;
+            uint16_t w_t1 = mock_motor_commands[0] >> 5;
+            uint16_t w_t2 = mock_motor_commands[1] >> 5;
+            uint16_t w_t3 = mock_motor_commands[2] >> 5;
+            uint16_t w_t4 = mock_motor_commands[3] >> 5;
             
             if (w_t1 >= 48) m1_n = (float)(w_t1 - 48) / (2047.0f - 48.0f);
             if (w_t2 >= 48) m2_n = (float)(w_t2 - 48) / (2047.0f - 48.0f);
@@ -186,13 +189,16 @@ int main(int argc, char* argv[]) {
                     truth->angular_rate.z * (180.0f/3.14159f),
                     stick_cmds.x, stick_cmds.y, stick_cmds.z,                 
                     m1_n, m2_n, m3_n, m4_n,
-                    captured_dshot_frames[0], captured_dshot_frames[1], 
-                    captured_dshot_frames[2], captured_dshot_frames[3], 
+                    mock_motor_commands[0], mock_motor_commands[1], 
+                    mock_motor_commands[2], mock_motor_commands[3], 
                     current_disturbance_torque);               
         }       
         
         current_sim_time_us += 1000;
     }
+    
+    // Safety paramount: Explicitly cut power to hardware at the end of the operation
+    motor_mock.disarm(); 
 
     fclose(csv_file);
     printf("[SUCCESS] Telemetry pipeline flushed directly to: %s\n", csv_path);
