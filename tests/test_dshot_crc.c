@@ -24,8 +24,8 @@ int main(void) {
     assert(frame_min == 0x0606);
     printf("[PASS] Min Armed (48)        -> Output: 0x%04X\n", frame_min);
 
-    // Test Case 3: Mid Throttle (1048), WITH Telemetry Request
-    // Payload: (1048 << 1) | 1 = 2097 = 0x831, Expected CRC: 0x2, Expected Frame: 0x8312
+   // Test Case 3: Mid Throttle (1048), WITH Telemetry Request
+    // Payload: (1048 << 1) | 1 = 2097 = 0x831, Expected CRC: 0xA, Expected Frame: 0x831A
     uint16_t frame_mid = dshot_encode_frame(1048, true);
     assert(frame_mid == 0x831A);
     printf("[PASS] Mid + Telemetry (1048)-> Output: 0x%04X\n", frame_mid);
