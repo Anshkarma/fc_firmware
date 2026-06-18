@@ -26,8 +26,7 @@
 #include "time_hal.h"
 
 extern void fc_init(void);
-extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float dt);
-
+extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float alt_m, float vz_m, float dt);
 /* Import global states from mock drivers */
 extern uint32_t current_sim_time_us;     // Defined in time_mock.c
 extern uint16_t mock_motor_commands[4];  // Defined in motor_mock.c
@@ -118,14 +117,10 @@ int main(int argc, char* argv[]) {
 
     // 5. The 1000Hz Deterministic Execution Loop
     uint32_t total_steps = (uint32_t)(config.duration_s * 1000.0f);
-    
+                modes_arm();        // Unlock firmware controller
+                motor_mock.arm();   // Unlock hardware driver power distribution
     for (uint32_t step = 0; step < total_steps; step++) {
 
-        if (step == 250) {
-            modes_arm();        // Unlock firmware controller
-            motor_mock.arm();   // Unlock hardware driver power distribution
-        }
-        
         // A. Sensor Mocking (Hardware Emulation)
         float g_arr[3], a_arr[3], m_arr[3];
         plant_generate_gyro(g_arr, current_sim_time_us);
@@ -138,11 +133,12 @@ int main(int argc, char* argv[]) {
         
         // B. RC Stick Commands
         vec3_t stick_cmds = {0.0f, 0.0f, 0.0f}; 
-        float throttle_cmd = 0.55f;  
+        float throttle_cmd = 0.50f;  
         float dt = 0.001f;
 
       /* Execute core flight controller step */
-        fc_step(v_gyro, v_accel, v_mag, stick_cmds, throttle_cmd, dt);
+       const quad_state_t *current_physics = plant_get_state();
+        fc_step(v_gyro, v_accel, v_mag, stick_cmds, throttle_cmd, current_physics->position.z, current_physics->velocity.z, dt);
 
         // D. Hardware Physics Execution (Consumes output from motor mock)
         plant_step(mock_motor_commands, current_sim_time_us);
