@@ -33,4 +33,4 @@ float kd_pitch_rate  = 0.000f;
 float kp_yaw_angle = 4.0f;        
 float kp_yaw_rate  = 0.04;    
 float ki_yaw_rate  = 0.02f;
-float kd_yaw_rate  = 0.000f;    // Rarely use D-term on Yaw (causes motor twitching)
+float kd_yaw_rate  = 0.000f;    

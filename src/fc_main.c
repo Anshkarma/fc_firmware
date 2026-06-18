@@ -31,7 +31,7 @@ void fc_init(void) {
     modes_init();
     control_init();
     
-    // Safety paramount: Force system into a disarmed state upon boot execution
+   /* Enforce disarmed state upon system initialization */
     modes_disarm(); 
 }
 
@@ -72,10 +72,10 @@ void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttl
     
     // 6. Flight State Conditional Matrix Execution
     if (current_mode == MODE_ARMED) {
-        // Gyro is already in rad/s from plant—perfect alignment with Radians attitude domain
+       /* Execute control loop with native rad/s gyro rates */
         control_torque_t torque = control_update(sticks, current_attitude, gyro, dt);
         
-        // Zero arbitrary multiplier hacks to enforce linear cascade loop integrity
+        /* Linear torque-to-throttle allocation matrix */
         float motor_norm[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         mixer_update(torque, throttle_stick, motor_norm);
         
@@ -94,6 +94,6 @@ void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttl
         control_init(); 
     }
     
-    // 7. Hard Boundary Dispatch: Write frames directly to HAL tracking pointer
+    /* Dispatch encoded 16-bit frames to Hardware Abstraction Layer */
     motor_hal_write(output_frames);
 }

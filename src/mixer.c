@@ -34,7 +34,7 @@ void mixer_update(control_torque_t torque, float throttle_norm, float motors_out
     motors_out[2] = t - r - p + y; 
     motors_out[3] = t + r - p - y;
 
-    // Air-Mode Saturation Strategy (Unchanged)
+    // Air-Mode Saturation Strategy : Preserve dynamic control authority at actuator limits */
     float max_motor = motors_out[0];
     float min_motor = motors_out[0];
     for (int i = 1; i < 4; i++) {

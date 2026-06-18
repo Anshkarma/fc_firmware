@@ -141,7 +141,7 @@ int main(int argc, char* argv[]) {
         float throttle_cmd = 0.55f;  
         float dt = 0.001f;
 
-        // C. Firmware Brain Execution (Generates DShot frames & triggers motor_hal_write)
+      /* Execute core flight controller step */
         fc_step(v_gyro, v_accel, v_mag, stick_cmds, throttle_cmd, dt);
 
         // D. Hardware Physics Execution (Consumes output from motor mock)
@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
         current_sim_time_us += 1000;
     }
     
-    // Safety paramount: Explicitly cut power to hardware at the end of the operation
+    /* Ensure hardware is disarmed before exit */
     motor_mock.disarm(); 
 
     fclose(csv_file);

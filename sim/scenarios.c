@@ -29,7 +29,7 @@ bool scenario_parse_and_setup(const char* scenario_name, scenario_config_t* conf
     // 2. SCENARIO 2: TILT RECOVERY
     else if (strcmp(scenario_name, "tilt_recovery") == 0) {
         config_out->type = SCENARIO_TILT_RECOVERY;
-        config_out->duration_s = 30.0f;
+        config_out->duration_s = 5.0f;
         // Init: 30 deg roll. Convert to quaternion (w = cos(theta/2), x = sin(theta/2))
         float half_angle_rad = (30.0f * (M_PI / 180.0f)) * 0.5f;
         config_out->initial_state.orientation.w = cosf(half_angle_rad);

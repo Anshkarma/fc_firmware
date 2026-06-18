@@ -49,9 +49,9 @@ static float compute_cascade_pid(float target_angle, float current_angle, float 
     // 3. Integral accumulator with anti-windup clamping (§7.6)
     *i_accumulator += rate_error * dt;
     if (*i_accumulator > INTEGRAL_MAX_LIMIT) *i_accumulator = INTEGRAL_MAX_LIMIT;
-    if (*i_accumulator < -INTEGRAL_MAX_LIMIT) *i_accumulator = -INTEGRAL_MAX_LIMIT; // ADDED NEGATIVE CLAMP
+    if (*i_accumulator < -INTEGRAL_MAX_LIMIT) *i_accumulator = -INTEGRAL_MAX_LIMIT; 
     
-    // 4. Derivative computation on MEASUREMENT to eliminate setpoint-step kicks (§14)
+    // 4. Derivative computation on MEASUREMENT to eliminate setpoint-step kicks 
     // Formula: d_meas/dt = (current_gyro - last_gyro) / dt
     float raw_derivative = (current_rate - (*last_gyro_meas)) / dt;
     

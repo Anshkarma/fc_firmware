@@ -128,7 +128,7 @@ void plant_init(uint32_t seed, const quad_state_t *init_state) {
     if (init_state) {
         memcpy(&global_state, init_state, sizeof(quad_state_t));
         
-        // SAFE CONTEXT: If initial motor thrust inside scenario is 0, initialize it to hover balance
+       // Set baseline hover thrust if uninitialized 
         if (global_state.motor_thrust[0] == 0.0f) {
             float base_eq = (PLANT_MASS_KG * PLANT_GRAVITY) / 4.0f;
             for (int i = 0; i < 4; i++) {
