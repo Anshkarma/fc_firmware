@@ -16,18 +16,20 @@ rmdir /s /q build && mkdir build && cd build && cmake -G "MinGW Makefiles" -D CM
 cmake --build .
 
 cd ..
+```
+
 
 2. Execution Instructions
 The central orchestration engine (sim_main.c) is designed to evaluate the firmware against strict mathematical test scenarios. The engine operates on a synthetic 1000Hz execution loop.
 
 Run the compiled binary directly from your terminal, passing the target scenario as an argument:
-
+```cmd
 build\sim_main.exe --scenario hover
 
 build\sim_main.exe --scenario tilt_recovery
 
 build\sim_main.exe --scenario disturbance
-
+``` 
 
 3. Telemetry & Plotting
 To facilitate brutal empirical scrutiny, the simulation downsamples the 1000Hz internal physics tick rate to a 100Hz telemetry log.
@@ -37,17 +39,17 @@ Locate Data: Upon successful scenario completion, the engine automatically flush
 Data Structure: The CSV strictly adheres to a 28-column matrix, capturing everything from the plant's true rigid-body state to the raw 16-bit encoded DShot frames dispatched by the HAL.
 
 Visualization: Feed the generated artifact into your Python plotting utility to extract visual verification of the system's performance.
-
+```
 DOS
 
 python script\plot_all.py
-
+```
 or you can do it scenriowise
-
+```
 python scripts\plot_scenario.py logs\tilt_recovery.csv
 
 python scripts\plot_scenario.py logs\disturbance.csv
 
 python scripts\plot_scenario.py logs\hover.csv
-
+```
 both the .py files have '--help' feature
