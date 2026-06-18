@@ -15,6 +15,8 @@ out/
 *.hex
 *.map
 
+
+
 # Object Files and Intermediate Translation Unit Garbage
 *.o
 *.obj
@@ -23,9 +25,11 @@ out/
 *.so
 *.dll
 *.dylib
+*.bat
 
 # Local Target Telemetry Output
 logs/
+old_logs/
 # Tuning logs that are not official project documentation
 TUNING_LOG.md
 
