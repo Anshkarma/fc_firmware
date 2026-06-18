@@ -48,52 +48,75 @@ void fc_init(void) {
  * @param throttle_stick Commanded throttle from the RC receiver [0.0, 1.0].
  * @param dt Delta time since the last execution tick in seconds (0.001f).
  */
-void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float dt) {
-    // 1. Core State Estimation: Update the Mahony filter registers
+// Top par globals mein yeh add kar:
+static float target_altitude = 10.0f; // Default 1 meter hover target
+static float alt_integral = 0.0f;
+
+// Signature update kar (ab isme alt_m aur vz_m bhi aayega)
+void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float alt_m, float vz_m, float dt) {
+    // 1. Core State Estimation
     mahony_update(gyro, accel, mag, dt);
     
-    // 2. Fetch Euler Angles from Estimator in Degrees Frame
-    float roll_deg = 0.0f;
-    float pitch_deg = 0.0f;
-    float yaw_deg = 0.0f;
+    float roll_deg = 0.0f, pitch_deg = 0.0f, yaw_deg = 0.0f;
     attitude_get_euler(&roll_deg, &pitch_deg, &yaw_deg);
     
-    // 3. Mathematical Domain Alignment: Convert Degrees to Radians for Cascade PID
-    vec3_t current_attitude;
-    current_attitude.x = roll_deg * (3.14159265f / 180.0f);
-    current_attitude.y = pitch_deg * (3.14159265f / 180.0f);
-    current_attitude.z = yaw_deg * (3.14159265f / 180.0f);
+    vec3_t current_attitude = {
+        roll_deg * (3.14159265f / 180.0f),
+        pitch_deg * (3.14159265f / 180.0f),
+        yaw_deg * (3.14159265f / 180.0f)
+    };
     
-    // 4. Actuator Buffer Vector Allocation
     uint16_t output_frames[4] = {0, 0, 0, 0};
-    
-    // 5. Read current flight mode from firmware memory state
     flight_mode_t current_mode = modes_get_current();
     
-    // 6. Flight State Conditional Matrix Execution
     if (current_mode == MODE_ARMED) {
-       /* Execute control loop with native rad/s gyro rates */
+        
+        /* ==========================================================
+         * ALTITUDE HOLD PID ENGINE 
+         * ========================================================== */
+        float effective_throttle = throttle_stick;
+        
+        // if RC throttle in the centre (in between .045 and .055), then altitude hold is being engaged
+        if (throttle_stick > 0.45f && throttle_stick <=0.55f) {
+            float kp_alt = 0.30f;  // P-gain for height
+            float kd_alt = 0.25f;  // D-gain for velocity damping
+            float ki_alt = 0.05f;  // I-gain
+            
+            float error_z = target_altitude - alt_m;
+            alt_integral += error_z * dt;
+            
+            // Limit integral windup
+            if (alt_integral > 0.2f) alt_integral = 0.2f;
+            if (alt_integral < -0.2f) alt_integral = -0.2f;
+            
+            // Fundamental Equation: Base Hover (50%) + PID Corrections
+            // The D-term uses negative Vz (Measurement Derivative) to prevent kicks
+            effective_throttle = 0.5f + (kp_alt * error_z) + (ki_alt * alt_integral) - (kd_alt * vz_m);
+            
+            // Saturation clamps
+            if (effective_throttle > 0.8f) effective_throttle = 0.8f;
+            if (effective_throttle < 0.2f) effective_throttle = 0.2f;
+        } else {
+
+            // if pilot sends manual throttle
+            target_altitude = alt_m;
+            alt_integral = 0.0f; // Reset memory
+        }
+        
         control_torque_t torque = control_update(sticks, current_attitude, gyro, dt);
         
-        /* Linear torque-to-throttle allocation matrix */
         float motor_norm[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        mixer_update(torque, throttle_stick, motor_norm);
+        mixer_update(torque, effective_throttle, motor_norm);
         
-        // Convert normalized floating arrays [0.0, 1.0] to true 16-bit DShot Wire Format
         for (int i = 0; i < 4; i++) {
             uint16_t throttle_2047 = 48 + (uint16_t)roundf(motor_norm[i] * (2047.0f - 48.0f));
             output_frames[i] = dshot_encode_frame(throttle_2047, false);
         }
     } else {
-        // Safe Disarmed State: Output clear wire frames to isolate plant physics
-        for (int i = 0; i < 4; i++) {
-            output_frames[i] = 0;
-        }
-        
-        // Keep PID integration accumulation bounds isolated while disarmed
+        for (int i = 0; i < 4; i++) output_frames[i] = 0;
         control_init(); 
+        alt_integral = 0.0f; // Purge Z-axis memory on disarm
     }
     
-    /* Dispatch encoded 16-bit frames to Hardware Abstraction Layer */
     motor_hal_write(output_frames);
 }
