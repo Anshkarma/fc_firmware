@@ -20,7 +20,7 @@
 #define KP_ACC 2.0f     /**< Proportional gain for accelerometer feedback */
 #define KI_ACC 0.005f   /**< Integral gain for accelerometer feedback */
 #define KP_MAG 2.5f     /**< INCREASED: Proportional gain for magnetometer feedback */
-#define KI_MAG 0.002f   /**< Integral gain for magnetometer feedback */
+#define KI_MAG 0.035f   /**< Integral gain for magnetometer feedback */
 
 /* Global Filter Tracking Orientation Matrices */
 static quat_t q     = {1.0f, 0.0f, 0.0f, 0.0f};  
@@ -178,6 +178,8 @@ if (mag_norm > 0.0f) {
  * @param pitch Pointer to store the computed pitch angle.
  * @param yaw Pointer to store the computed yaw angle.
  */
+
+
 void attitude_get_euler(float *roll, float *pitch, float *yaw) {
     *roll = atan2f(2.0f * (q.w * q.x + q.y * q.z), 1.0f - 2.0f * (q.x * q.x + q.y * q.y)) * (180.0f / M_PI);
     
