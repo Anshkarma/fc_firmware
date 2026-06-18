@@ -45,6 +45,8 @@ bool scenario_parse_and_setup(const char* scenario_name, scenario_config_t* conf
         
         // Inject 0.1 N.m torque on roll axis at t=2.0s for 50ms
         config_out->disturbance.torque_Nm.x = 0.1f;
+        config_out->disturbance.torque_Nm.y = 0.1f;
+        config_out->disturbance.torque_Nm.z = 0.1f;
         config_out->disturbance.start_us = 2000000; 
         config_out->disturbance.duration_us = 50000;
         return true;
