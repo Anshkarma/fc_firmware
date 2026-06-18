@@ -123,7 +123,7 @@ void mahony_update(vec3_t gyro, vec3_t accel, vec3_t mag, float dt) {
 
 // 2. Magnetometer Feedback (Yaw correction) — YAW-ONLY PROJECTION
 if (mag_norm > 0.0f) {
-    vec3_t m = {mag.x / mag_norm, mag.y / mag_norm, mag.z / mag_norm};
+    vec3_t m = {mag_corrected.x / mag_norm, mag_corrected.y / mag_norm, mag_corrected.z / mag_norm};
     vec3_t h = quaternion_rotate(m, q);
     vec3_t b = {sqrtf(h.x*h.x + h.y*h.y), 0.0f, h.z};
     vec3_t w_mag = quaternion_rotate_inverse(b, q);
