@@ -1,55 +1,66 @@
-# Deterministic Flight Controller Simulation Bench
+# Flight Controller Simulator
 
-## Architecture Overview
-This repository contains a bare-metal, strictly deterministic flight controller architecture written in pure C. The system is designed with a relentless focus on the **Separation of Concerns**. 
+A bare-metal flight controller implementation in C with physics simulation for testing.
 
-The core flight dynamics algorithms—including a Cascade PID controller and a mathematically rigorous Mahony AHRS (Attitude and Heading Reference System)—are 100% hardware-agnostic. They interface with the physical world (or the integrated physics plant) exclusively through isolated Hardware Abstraction Layer (HAL) mock drivers (`motor_mock` and `time_mock`).
+## Architecture
 
-## 🛠️ 1. Build Instructions
-The build pipeline is optimized for a minimalist command-line environment utilizing CMake and MinGW GCC. 
+- **Control Core:** Cascade PID for attitude control, Mahony AHRS for attitude estimation
+- **HAL Layer:** Hardware abstraction for motors, sensors, and timing
+- **Simulation:** Physics model with quadcopter dynamics
+- **Testing:** Multiple scenarios for validation
 
-Open your Command Prompt at the project root and execute the following chain to purge legacy artifacts and force a clean, definitive build:
+## Build
 
+Windows (MinGW):
 ```cmd
-rmdir /s /q build && mkdir build && cd build && cmake -G "MinGW Makefiles" -D CMAKE_C_COMPILER=c:/mingw/bin/gcc.exe .. && cmake --build . && cd ..
-
+rmdir /s /q build && mkdir build && cd build
+cmake -G "MinGW Makefiles" -D CMAKE_C_COMPILER=c:/mingw/bin/gcc.exe ..
 cmake --build .
-
 cd ..
 ```
 
+## Run Tests
 
-2. Execution Instructions
-The central orchestration engine (sim_main.c) is designed to evaluate the firmware against strict mathematical test scenarios. The engine operates on a synthetic 1000Hz execution loop.
-
-Run the compiled binary directly from your terminal, passing the target scenario as an argument:
 ```cmd
-build\sim_main.exe --scenario hover
-
-build\sim_main.exe --scenario tilt_recovery
-
-build\sim_main.exe --scenario disturbance
-``` 
-
-3. Telemetry & Plotting
-To facilitate brutal empirical scrutiny, the simulation downsamples the 1000Hz internal physics tick rate to a 100Hz telemetry log.
-
-Locate Data: Upon successful scenario completion, the engine automatically flushes the pipeline to logs/<scenario_name>.csv.
-
-Data Structure: The CSV strictly adheres to a 28-column matrix, capturing everything from the plant's true rigid-body state to the raw 16-bit encoded DShot frames dispatched by the HAL.
-
-Visualization: Feed the generated artifact into your Python plotting utility to extract visual verification of the system's performance.
+build\sim_binary.exe --scenario hover
+build\sim_binary.exe --scenario tilt_recovery
+build\sim_binary.exe --scenario disturbance
 ```
-DOS
 
-python script\plot_all.py
-```
-or you can do it scenriowise
-```
-python scripts\plot_scenario.py logs\tilt_recovery.csv
+## View Results
 
-python scripts\plot_scenario.py logs\disturbance.csv
-
+Python plotting requires pandas and matplotlib:
+```cmd
 python scripts\plot_scenario.py logs\hover.csv
+python scripts\plot_scenario.py logs\tilt_recovery.csv
+python scripts\plot_scenario.py logs\disturbance.csv
 ```
-both the .py files have '--help' feature
+
+## Features
+
+- **Attitude Estimation:** Quaternion-based Mahony filter
+- **Control:** Cascade PID with separate angle and rate loops
+- **Motor Control:** DShot protocol encoding
+- **Altitude Hold:** Optional PID altitude controller
+- **Simulation:** Deterministic 1000Hz execution loop
+- **Logging:** 28-parameter telemetry at 100Hz
+
+## Code Structure
+
+```
+src/               - Flight controller source
+├── fc_main.c      - Main loop
+├── attitude.c     - AHRS/attitude estimation
+├── control.c      - PID controllers
+├── mixer.c        - Motor mixing
+├── dshot.c        - Motor protocol
+└── modes.c        - Flight modes
+
+sim/               - Physics simulation
+├── plant.c        - Quadcopter dynamics
+├── scenarios.c    - Test scenarios
+└── sim_main.c     - Test runner
+
+hal/               - Hardware abstraction
+drivers_host/      - Mock drivers for simulation
+```
