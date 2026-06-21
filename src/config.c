@@ -24,7 +24,7 @@ float kd_roll_rate  = 0.005f;     // Dampens high-frequency oscillation
 // ==============================================================================
 float kp_pitch_angle = 12.0f;
 float kp_pitch_rate  = 0.04f;         // 
-float ki_pitch_rate  = 0.030f;       // best 0.050 
+float ki_pitch_rate  = 0.030f;      
 float kd_pitch_rate  = 0.005f;
 
 // ==============================================================================
