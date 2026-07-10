@@ -1,6 +1,8 @@
 #include "mag_hal.h"
 #include "../sim/plant.h"
 
+extern uint32_t current_sim_time_us;
+
 static bool mock_mag_init(void) {
     return true;
 }
@@ -8,7 +10,7 @@ static bool mock_mag_init(void) {
 static bool mock_mag_read(float mag_ut[3], uint32_t *ts_us) {
     if (!mag_ut || !ts_us) return false;
     
-    *ts_us = 1000;
+    *ts_us = current_sim_time_us;
     plant_generate_mag(mag_ut, *ts_us);
     
     return true;
