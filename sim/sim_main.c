@@ -1,6 +1,13 @@
 /**
  * @file sim_main.c
- * @brief Flight controller simulator. Tests firmware against physics model.
+ * @brief Host simulation entry point: drives the firmware against the
+ *        physics model and logs telemetry to CSV.
+ *
+ * All sensor input and motor output crosses through the HAL contracts
+ * defined in hal/ (imu_dev_t, mag_dev_t, motor_dev_t) rather than
+ * touching the plant model directly. This file is the only place that
+ * knows the HAL is backed by a simulation; everything in src/ only
+ * ever sees the HAL interface, never the plant.
  */
 
 #include <stdio.h>
@@ -17,6 +24,8 @@
 #include "../src/control.h"
 #include "../src/attitude.h"
 
+#include "imu_hal.h"
+#include "mag_hal.h"
 #include "motor_hal.h"
 #include "time_hal.h"
 
@@ -25,10 +34,22 @@ extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float 
 extern uint32_t current_sim_time_us;
 extern uint16_t mock_motor_commands[4];
 
+/**
+ * HAL contract implementation (host build): forwards encoded DShot
+ * frames from the firmware to the motor HAL. fc_main.c calls this
+ * function with no knowledge of what's on the other side of it.
+ */
 void motor_hal_write(uint16_t frames[4]) {
     motor_mock.send_dshot(frames);
 }
 
+/**
+ * @brief Converts a quaternion to Euler angles in degrees.
+ *
+ * Used only for logging ground-truth attitude (roll_true/pitch_true/
+ * yaw_true in the CSV) -- the firmware never calls this, it has its
+ * own equivalent in attitude.c for the estimated attitude.
+ */
 static void quat_to_euler_deg(quat_t q, float *roll, float *pitch, float *yaw) {
     float sinr_cosp = 2.0f * (q.w * q.x + q.y * q.z);
     float cosr_cosp = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
@@ -77,6 +98,11 @@ int main(int argc, char* argv[]) {
     }
     
     current_sim_time_us = 0;
+    /* Bring up every HAL device before the firmware starts calling into
+     * them. Order doesn't matter here since none depend on each other,
+     * but all three must be initialized before the first fc_step(). */
+    imu_mock.init();
+    mag_mock.init();
     motor_mock.init();
     fc_init();
     
@@ -101,11 +127,13 @@ int main(int argc, char* argv[]) {
     motor_mock.arm();
     
     for (uint32_t step = 0; step < total_steps; step++) {
-        // Get sensor readings from physics model
+        // Get sensor readings through the HAL (imu_mock/mag_mock internally
+        // call plant_generate_gyro/accel/mag -- same noise model, same
+        // numbers, just routed through the documented sensor contract).
         float g_arr[3], a_arr[3], m_arr[3];
-        plant_generate_gyro(g_arr, current_sim_time_us);
-        plant_generate_accel(a_arr, current_sim_time_us);
-        plant_generate_mag(m_arr, current_sim_time_us);
+        uint32_t ts_us;
+        imu_mock.read(g_arr, a_arr, &ts_us);
+        mag_mock.read(m_arr, &ts_us);
         
         vec3_t gyro = {g_arr[0], g_arr[1], g_arr[2]};
         vec3_t accel = {a_arr[0], a_arr[1], a_arr[2]};
@@ -158,8 +186,8 @@ int main(int argc, char* argv[]) {
             // Write CSV row
             fprintf(csv_file, "%.3f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f,%.4f,%.4f,0x%04X,0x%04X,0x%04X,0x%04X,%.2f\n",
                     time_s,
-                    0.0f, 0.0f, truth->position.z,
-                    0.0f, 0.0f, truth->velocity.z,
+                    truth->position.x, truth->position.y, truth->position.z,                     
+                    truth->velocity.x, truth->velocity.y, truth->velocity.z,
                     t_roll, t_pitch, t_yaw,
                     e_roll, e_pitch, e_yaw,
                     truth->angular_rate.x * (180.0f/3.14159f),
