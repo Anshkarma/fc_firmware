@@ -3,7 +3,7 @@
  * @brief Attitude estimation using Mahony complementary filter.
  * Uses quaternions to avoid gimbal lock.
  */
-
+#include "plant.h"
 #include "attitude.h"
 #include <math.h>
 
@@ -83,9 +83,9 @@ void mahony_update(vec3_t gyro, vec3_t accel, vec3_t mag, float dt) {
 
     // Magnetometer feedback for yaw
     vec3_t mag_corrected = {
-        mag.x - 5.0f,
-        mag.y + 3.0f,
-        mag.z - 2.0f
+        mag.x - PLANT_HARD_IRON_X,
+        mag.y - PLANT_HARD_IRON_Y,
+        mag.z - PLANT_HARD_IRON_Z    // removed the hard coded numbers
     };
 
     float mag_norm = sqrtf(mag_corrected.x * mag_corrected.x + 
