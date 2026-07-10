@@ -198,7 +198,7 @@ int main(int argc, char* argv[]) {
                     mock_motor_commands[0], mock_motor_commands[1],
                     mock_motor_commands[2], mock_motor_commands[3],
                     disturbance);
-        }
+        } // earlier truth posiion on x and y axis were printed hardcoded, 
         
         current_sim_time_us += 1000;
     }
