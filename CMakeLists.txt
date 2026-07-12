@@ -22,12 +22,14 @@ set(HAL_MOCK_SOURCES
     drivers_host/mag_mock.c
     drivers_host/motor_mock.c
     drivers_host/time_mock.c
+    drivers_host/baro_mock.c
 )
 
 # Added the newly engineered modules into the compilation chain
 set(FIRMWARE_CORE_SOURCES
     src/config.c      # Global PID gains and tuning params
     src/attitude.c
+    src/altitude.c
     src/control.c
     src/mixer.c
     src/dshot.c
