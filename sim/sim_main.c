@@ -31,7 +31,7 @@
 #include "baro_hal.h"
 
 extern void fc_init(void);
-extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float alt_m, float vz_m, float dt);
+extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float dt);
 extern uint32_t current_sim_time_us;
 extern uint16_t mock_motor_commands[4];
 
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
     imu_mock.init();
     mag_mock.init();
     motor_mock.init();
-    baro_mock_.init();      // < newly introduced >
+    baro_mock.init();      // < newly introduced >
     fc_init();
     
     // Create output directory and open log file
@@ -146,9 +146,8 @@ int main(int argc, char* argv[]) {
         float throttle = 0.50f;
         float dt = 0.001f;
 
-        // Run flight controller
-        const quad_state_t *state = plant_get_state();
-        fc_step(gyro, accel, mag, sticks, throttle, state->position.z, state->velocity.z, dt);
+    
+        fc_step(gyro, accel, mag, sticks, throttle, dt);
 
         // Run physics simulation
         plant_step(mock_motor_commands, current_sim_time_us);
