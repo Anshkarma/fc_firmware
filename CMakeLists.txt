@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(flight_controller_sim C)
 
-# Force strict embedded compilation constraints (§1.2 Rule Compliance)
+# Force strict embedded compilation constraints
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -11,12 +11,7 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic -O2)
 endif()
 
-# Explicitly discover all system directories
-include_directories(hal)
-include_directories(src)
-include_directories(sim)
-
-# Accumulate separate source targets to preserve translation unit boundaries
+# Define Source Collections
 set(HAL_MOCK_SOURCES
     drivers_host/imu_mock.c
     drivers_host/mag_mock.c
@@ -25,39 +20,51 @@ set(HAL_MOCK_SOURCES
     drivers_host/baro_mock.c
 )
 
-# Added the newly engineered modules into the compilation chain
 set(FIRMWARE_CORE_SOURCES
-    src/config.c      # Global PID gains and tuning params
+    src/config.c
     src/attitude.c
     src/altitude.c
     src/control.c
     src/mixer.c
     src/dshot.c
-    src/modes.c       # Flight mode state machine
-    src/fc_main.c     # The 1000Hz Periodic Orchestrator
+    src/modes.c
+    src/fc_main.c
 )
 
 set(SIMULATION_SOURCES
     sim/plant.c
     sim/scenarios.c
     sim/sim_main.c
+    sim/visualizer.c
 )
 
-# 1. Target: The Main Simulation Engine
+# 1. Target: The Main Simulation Engine (sim_binary)
 add_executable(sim_binary 
     ${HAL_MOCK_SOURCES}
     ${FIRMWARE_CORE_SOURCES}
     ${SIMULATION_SOURCES}
 )
 
-# 2. Target: The Isolated DShot Unit Test (Section 8.3 Verification)
+# Setup Includes
+target_include_directories(sim_binary PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/hal
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/sim
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers_host
+    ${CMAKE_CURRENT_SOURCE_DIR}/raylib/include
+)
+
+# Link Libraries for Main Target
+target_link_directories(sim_binary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/raylib/lib)
+target_link_libraries(sim_binary PRIVATE raylib winmm gdi32 opengl32 m)
+
+# 2. Target: The Isolated DShot Unit Test
 add_executable(test_dshot 
     src/dshot.c
     tests/test_dshot_crc.c
 )
 
-# Link standard math primitives framework cleanly
+# Link math library for test target
 if(NOT MSVC)
-    target_link_libraries(sim_binary m)
-    target_link_libraries(test_dshot m)
+    target_link_libraries(test_dshot PRIVATE m)
 endif()
