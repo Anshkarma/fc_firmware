@@ -28,6 +28,7 @@
 #include "mag_hal.h"
 #include "motor_hal.h"
 #include "time_hal.h"
+#include "baro_hal.h"
 
 extern void fc_init(void);
 extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float alt_m, float vz_m, float dt);
@@ -104,6 +105,7 @@ int main(int argc, char* argv[]) {
     imu_mock.init();
     mag_mock.init();
     motor_mock.init();
+    baro_mock_.init();      // < newly introduced >
     fc_init();
     
     // Create output directory and open log file

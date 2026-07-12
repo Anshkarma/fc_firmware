@@ -73,5 +73,5 @@ void plant_inject_disturbance(const disturbance_t *d);
 void plant_generate_gyro(float out_gyro[3], uint32_t ts_us);
 void plant_generate_accel(float out_accel[3], uint32_t ts_us);
 void plant_generate_mag(float out_mag[3], uint32_t ts_us);
-
+void plant_generate_baro(float *out_pressure_pa, float *out_temp_c, uint32_t ts_us);
 #endif /* PLANT_H */
