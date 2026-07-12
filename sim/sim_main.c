@@ -29,6 +29,7 @@
 #include "motor_hal.h"
 #include "time_hal.h"
 #include "baro_hal.h"
+#include "visualizer.h"
 
 extern void fc_init(void);
 extern void fc_step(vec3_t gyro, vec3_t accel, vec3_t mag, vec3_t sticks, float throttle_stick, float dt);
@@ -107,6 +108,7 @@ int main(int argc, char* argv[]) {
     motor_mock.init();
     baro_mock.init();      // < newly introduced >
     fc_init();
+    visualizer_init();
     
     // Create output directory and open log file
     system("if not exist logs mkdir logs");
@@ -122,6 +124,8 @@ int main(int argc, char* argv[]) {
 
     // Write CSV header
     fprintf(csv_file, "time_s,pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,roll_true,pitch_true,yaw_true,roll_est,pitch_est,yaw_est,rate_roll,rate_pitch,rate_yaw,setpoint_roll,setpoint_pitch,setpoint_yaw,motor1,motor2,motor3,motor4,dshot1,dshot2,dshot3,dshot4,disturbance_torque\n");
+
+    
 
     // Run simulation loop
     uint32_t total_steps = (uint32_t)(config.duration_s * 1000.0f);
@@ -162,6 +166,9 @@ int main(int argc, char* argv[]) {
             }
 
             const quad_state_t *truth = plant_get_state();
+
+	   visualizer_render(truth);
+ 
             float t_roll, t_pitch, t_yaw;
             quat_to_euler_deg(truth->orientation, &t_roll, &t_pitch, &t_yaw);
 
@@ -204,6 +211,7 @@ int main(int argc, char* argv[]) {
         current_sim_time_us += 1000;
     }
     
+    visualizer_close();
     motor_mock.disarm();
     fclose(csv_file);
     printf("[SUCCESS] Log saved to: %s\n", csv_path);

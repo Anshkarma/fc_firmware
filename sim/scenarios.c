@@ -34,6 +34,7 @@ bool scenario_parse_and_setup(const char* scenario_name, scenario_config_t* conf
         float half_angle_rad = (30.0f * (M_PI / 180.0f)) * 0.5f;
         config_out->initial_state.orientation.w = cosf(half_angle_rad);
         config_out->initial_state.orientation.x = sinf(half_angle_rad);
+        config_out->initial_state.position.z = 1.0f; 
         return true;
     }
     
@@ -49,7 +50,9 @@ bool scenario_parse_and_setup(const char* scenario_name, scenario_config_t* conf
         config_out->disturbance.torque_Nm.z = 0.1f;
         config_out->disturbance.start_us = 2000000; 
         config_out->disturbance.duration_us = 50000;
-        return true;
+        config_out->initial_state.position.z = 1.0f; 
+ 
+       return true;
     }
     
     // 4. INVALID INPUT
