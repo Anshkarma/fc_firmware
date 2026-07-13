@@ -24,7 +24,7 @@
 #include "../src/modes.h"
 #include "../src/control.h"
 #include "../src/attitude.h"
-#include "../src/config.h" /* <--- UPDATE 1: Added to access ALT_HOVER_THROTTLE */
+#include "../src/config.h"
 
 #include "imu_hal.h"
 #include "mag_hal.h"
@@ -103,8 +103,8 @@ int main(int argc, char *argv[]) {
     }
 
     current_sim_time_us = 0;
-
-    /* <--- UPDATE 2: Initialize Altitude Kalman Filter before loop starts ---> */
+    
+    // Altitude Kalman Init
     kalman_alt_t alt_kf;
     altitude_init(&alt_kf, 0.0f);
 
@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
 
         float dt = 0.001f;
 
-        /* <--- UPDATE 3: Baro data read and piped into Kalman Estimator ---> */
+        /* Integrate Barometer with Kalman Filter */
         if (baro_mock.read(&baro_pressure_pa, &baro_temp_c, &ts_us)) {
             float raw_alt = baro_to_altitude(baro_pressure_pa, baro_temp_c);
             kalman_update(&alt_kf, raw_alt, dt);
@@ -195,12 +195,12 @@ int main(int argc, char *argv[]) {
         vec3_t sticks = { 0.0f, 0.0f, 0.0f };
         float throttle = 0.50f;
 
-        /* <--- UPDATE 4: Altitude Control Override Loop ---> */
+        /* Evaluate Altitude Hold */
         bool alt_active = (throttle >= 0.45f && throttle <= 0.55f);
         float alt_corr = control_update_altitude(10.0f, alt_kf.z, alt_kf.v, dt, alt_active);
         float final_throttle = alt_active ? (ALT_HOVER_THROTTLE + alt_corr) : throttle;
 
-        /* Feed the final adjusted throttle to the firmware */
+        /* Command FC Step */
         fc_step(gyro, accel, mag, sticks, final_throttle, dt);
 
         /* Run physics simulation */
