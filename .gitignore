@@ -25,7 +25,7 @@ out/
 *.so
 *.dll
 *.dylib
-*.bat
+
 
 # Local Target Telemetry Output
 logs/
