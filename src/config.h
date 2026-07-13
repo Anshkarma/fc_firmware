@@ -43,6 +43,14 @@ extern float kp_alt_angle;
 extern float kp_alt_rate;
 extern float ki_alt_rate;
 extern float kd_alt_rate;
- 
+
+/* Hard-iron magnetometer calibration offsets (uT).
+ * These are sensor installation constants, not physics constants --
+ * they belong here so they can be tuned per-platform without touching
+ * the estimator or the simulation plant model. On real hardware these
+ * would be measured during a magnetometer calibration routine. */
+extern float MAG_HARD_IRON_X;
+extern float MAG_HARD_IRON_Y;
+extern float MAG_HARD_IRON_Z;
 
 #endif // CONFIG_H
